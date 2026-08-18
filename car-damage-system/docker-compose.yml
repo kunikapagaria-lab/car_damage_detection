@@ -1,0 +1,157 @@
+version: "3.9"
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  model_weights:
+  logs:
+
+networks:
+  car_damage_net:
+    driver: bridge
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: car-damage-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: car_damage
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - car_damage_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d car_damage"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: car-damage-redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - car_damage_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MinIO ───────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: car-damage-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - car_damage_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── Local webhook echo (demo alert destination, no external calls) ──────────
+  webhook-echo:
+    image: mccutchen/go-httpbin:v2.15.0
+    container_name: car-damage-webhook-echo
+    restart: unless-stopped
+    ports:
+      - "8082:8080"
+    networks:
+      - car_damage_net
+
+  # ── Backend API (port 8000) ─────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    image: car-damage-api:latest
+    container_name: car-damage-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/car_damage
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_SECURE: "false"
+      ENVIRONMENT: production
+      LOG_LEVEL: INFO
+    ports:
+      - "8010:8000"
+    volumes:
+      - logs:/app/logs
+    networks:
+      - car_damage_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── Inference service (port 8001) ───────────────────────────────────────────
+  inference:
+    build:
+      context: .
+      dockerfile: Dockerfile.inference
+      target: dummy
+    image: car-damage-inference:latest
+    container_name: car-damage-inference
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      PREDICTOR_MODE: dummy
+      INFERENCE_HOST: 0.0.0.0
+      INFERENCE_PORT: "8001"
+      CAMERAS_CONFIG_PATH: config/cameras.yaml
+      DUMMY_INFERENCE_LATENCY_MS: "80"
+    ports:
+      - "8001:8001"
+    volumes:
+      - model_weights:/app/models
+      - ./config:/app/config
+      - logs:/app/logs
+    networks:
+      - car_damage_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

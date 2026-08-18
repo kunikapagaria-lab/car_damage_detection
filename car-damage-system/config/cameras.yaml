@@ -1,0 +1,52 @@
+﻿# All cameras below are disabled placeholders (no real RTSP hardware in this
+# environment) — flip `enabled: true` and set a real rtsp_url once cameras
+# are on site. The upload flow / dummy predictor works fully without them.
+cameras:
+  - id: cam_01
+    angle: front
+    rtsp_url: rtsp://admin:PASSWORD@192.168.1.101:554/Streaming/Channels/101
+    resolution: [1920, 1080]
+    fps: 15
+    enabled: false
+
+  - id: cam_02
+    angle: rear
+    rtsp_url: rtsp://admin:PASSWORD@192.168.1.102:554/Streaming/Channels/101
+    resolution: [1920, 1080]
+    fps: 15
+    enabled: false
+
+  - id: cam_03
+    angle: left
+    rtsp_url: rtsp://admin:PASSWORD@192.168.1.103:554/Streaming/Channels/101
+    resolution: [1920, 1080]
+    fps: 15
+    enabled: false
+
+  - id: cam_04
+    angle: right
+    rtsp_url: rtsp://admin:PASSWORD@192.168.1.104:554/Streaming/Channels/101
+    resolution: [1920, 1080]
+    fps: 15
+    enabled: false
+
+  - id: cam_05
+    angle: front_oblique
+    rtsp_url: rtsp://admin:PASSWORD@192.168.1.105:554/Streaming/Channels/101
+    resolution: [1920, 1080]
+    fps: 15
+    enabled: false
+
+  - id: cam_06
+    angle: rear_oblique
+    rtsp_url: rtsp://admin:PASSWORD@192.168.1.106:554/Streaming/Channels/101
+    resolution: [1920, 1080]
+    fps: 15
+    enabled: false
+
+settings:
+  frame_diff_threshold: 8.0
+  reconnect_interval_seconds: 5
+  frame_queue_maxsize: 50
+  process_every_nth_frame: 3
+

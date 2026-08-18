@@ -1,0 +1,260 @@
+version: "3.9"
+
+# ── Named volumes ──────────────────────────────────────────────────────────────
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  model_weights:
+  pdf_reports:
+  nginx_logs:
+  app_logs:
+
+# ── Shared network ─────────────────────────────────────────────────────────────
+networks:
+  car_damage_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
+# ── Common healthcheck defaults ────────────────────────────────────────────────
+x-healthcheck-defaults: &hc_defaults
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 30s
+
+services:
+
+  # ── Nginx reverse proxy ───────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: car-damage-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_logs:/var/log/nginx
+      # Uncomment for SSL:
+      # - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend-api:
+        condition: service_healthy
+      inference-service:
+        condition: service_healthy
+    networks:
+      - car_damage_net
+    mem_limit: 128m
+    cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      <<: *hc_defaults
+
+  # ── Next.js frontend ──────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ../../car-damage-frontend
+      dockerfile: Dockerfile
+    image: car-damage-frontend:latest
+    container_name: car-damage-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: /api/v1
+      NEXT_PUBLIC_WS_URL: ws://${DOMAIN:-localhost}/ws/live-feed
+      NEXT_PUBLIC_MINIO_URL: http://${DOMAIN:-localhost}/minio-pub
+    networks:
+      - car_damage_net
+    mem_limit: 512m
+    cpus: "1.0"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      <<: *hc_defaults
+
+  # ── Backend API ───────────────────────────────────────────────────────────────
+  backend-api:
+    build:
+      context: ..
+      dockerfile: Dockerfile.backend
+    image: car-damage-api:latest
+    container_name: car-damage-api
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/car_damage
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_SECURE: "false"
+      ENVIRONMENT: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - pdf_reports:/app/reports/output
+      - app_logs:/app/logs
+    networks:
+      - car_damage_net
+    mem_limit: 1g
+    cpus: "2.0"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      <<: *hc_defaults
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+               --log-config /dev/null"
+
+  # ── Inference service ─────────────────────────────────────────────────────────
+  inference-service:
+    build:
+      context: ..
+      dockerfile: Dockerfile.inference
+      target: dummy
+    image: car-damage-inference:latest
+    container_name: car-damage-inference
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      PREDICTOR_MODE: ${PREDICTOR_MODE:-dummy}
+      CAMERAS_CONFIG_PATH: config/cameras.yaml
+    volumes:
+      - model_weights:/app/models
+      - ../config:/app/config:ro
+      - app_logs:/app/logs
+    networks:
+      - car_damage_net
+    mem_limit: 4g
+    cpus: "4.0"
+    # Uncomment to expose GPU:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      <<: *hc_defaults
+
+  # ── Celery worker ─────────────────────────────────────────────────────────────
+  celery-worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile.worker
+    image: car-damage-worker:latest
+    container_name: car-damage-worker
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/car_damage
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_SECURE: "false"
+      PDF_OUTPUT_DIR: /app/reports/output
+    command: >
+      celery -A tasks.celery_app worker
+        --loglevel=info
+        --concurrency=4
+        --queues=default,pdf,webhooks
+        --max-tasks-per-child=200
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - pdf_reports:/app/reports/output
+      - app_logs:/app/logs
+    networks:
+      - car_damage_net
+    mem_limit: 2g
+    cpus: "2.0"
+    healthcheck:
+      test: ["CMD", "celery", "-A", "tasks.celery_app", "inspect", "ping", "-d", "celery@$$HOSTNAME"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 60s
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: car-damage-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: car_damage
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - car_damage_net
+    mem_limit: 1g
+    cpus: "1.0"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d car_damage"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── Redis ─────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: car-damage-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+        --save 60 1
+        --loglevel warning
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - car_damage_net
+    mem_limit: 384m
+    cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MinIO ─────────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: car-damage-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    networks:
+      - car_damage_net
+    mem_limit: 1g
+    cpus: "1.0"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

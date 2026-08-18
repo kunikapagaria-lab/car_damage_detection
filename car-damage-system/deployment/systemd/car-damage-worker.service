@@ -1,0 +1,46 @@
+[Unit]
+Description=Car Damage Detection — Celery Worker
+Documentation=https://github.com/your-org/car-damage-system
+After=network.target redis.service postgresql.service
+Requires=redis.service
+PartOf=car-damage.target
+
+[Service]
+Type=exec
+User=car-damage
+Group=car-damage
+WorkingDirectory=/opt/car-damage-system
+
+EnvironmentFile=/opt/car-damage-system/.env
+Environment=PDF_OUTPUT_DIR=/opt/car-damage-system/reports/output
+
+ExecStart=/opt/car-damage-system/venv/bin/celery \
+    -A tasks.celery_app worker \
+    --loglevel=info \
+    --concurrency=4 \
+    --queues=default,pdf,webhooks \
+    --max-tasks-per-child=200 \
+    --logfile=/opt/car-damage-system/logs/celery.log
+
+ExecStop=/opt/car-damage-system/venv/bin/celery \
+    -A tasks.celery_app control shutdown
+
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+KillMode=control-group
+TimeoutStopSec=60
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/car-damage-system/logs /opt/car-damage-system/reports /tmp
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=car-damage-worker
+
+[Install]
+WantedBy=multi-user.target

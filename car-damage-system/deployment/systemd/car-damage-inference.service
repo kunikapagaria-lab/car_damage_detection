@@ -1,0 +1,46 @@
+[Unit]
+Description=Car Damage Detection — Inference Service (port 8001)
+Documentation=https://github.com/your-org/car-damage-system
+After=network.target
+PartOf=car-damage.target
+
+[Service]
+Type=exec
+User=car-damage
+Group=car-damage
+WorkingDirectory=/opt/car-damage-system
+
+EnvironmentFile=/opt/car-damage-system/.env
+Environment=CAMERAS_CONFIG_PATH=/opt/car-damage-system/config/cameras.yaml
+
+ExecStart=/opt/car-damage-system/venv/bin/uvicorn main_inference:app \
+    --host 0.0.0.0 \
+    --port 8001 \
+    --workers 1 \
+    --log-config /dev/null
+
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/car-damage-system/logs /tmp
+
+# Allow GPU device access
+DeviceAllow=/dev/nvidia0
+DeviceAllow=/dev/nvidiactl
+DeviceAllow=/dev/nvidia-uvm
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=car-damage-inference
+
+[Install]
+WantedBy=multi-user.target

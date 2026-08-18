@@ -1,0 +1,38 @@
+[Unit]
+Description=Car Damage Detection — Next.js Frontend (port 3000)
+Documentation=https://github.com/your-org/car-damage-system
+After=network.target car-damage-backend.service
+PartOf=car-damage.target
+
+[Service]
+Type=exec
+User=car-damage
+Group=car-damage
+WorkingDirectory=/opt/car-damage-frontend
+
+Environment=NODE_ENV=production
+Environment=PORT=3000
+EnvironmentFile=/opt/car-damage-frontend/.env.local
+
+ExecStart=/usr/bin/node server.js
+
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/car-damage-frontend/.next/cache
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=car-damage-frontend
+
+[Install]
+WantedBy=multi-user.target

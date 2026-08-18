@@ -1,0 +1,72 @@
+# Stage 1 — Dummy mode (no GPU, lightweight)
+FROM python:3.11-slim AS dummy
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY inference/ ./inference/
+COPY api/ ./api/
+COPY config/ ./config/
+COPY main_inference.py .
+
+ENV PREDICTOR_MODE=dummy
+ENV INFERENCE_HOST=0.0.0.0
+ENV INFERENCE_PORT=8001
+ENV CAMERAS_CONFIG_PATH=config/cameras.yaml
+
+EXPOSE 8001
+
+CMD ["uvicorn", "main_inference:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1"]
+
+
+# Stage 2 — Full mode (CUDA GPU)
+FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04 AS full
+
+WORKDIR /app
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip
+
+COPY requirements_full.txt .
+RUN pip install --no-cache-dir -r requirements_full.txt
+
+COPY inference/ ./inference/
+COPY api/ ./api/
+COPY config/ ./config/
+COPY main_inference.py .
+
+ENV PREDICTOR_MODE=detectron2
+ENV INFERENCE_HOST=0.0.0.0
+ENV INFERENCE_PORT=8001
+ENV CAMERAS_CONFIG_PATH=config/cameras.yaml
+ENV INFERENCE_DEVICE=cuda
+
+EXPOSE 8001
+
+CMD ["uvicorn", "main_inference:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1"]

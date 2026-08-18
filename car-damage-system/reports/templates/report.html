@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Inspection Report — {{ plate_number }}</title>
+<style>
+/* ── Page setup ─────────────────────────────────────────────────────────── */
+@page {
+    size: A4;
+    margin: 18mm 14mm 22mm 14mm;
+}
+@page cover-page {
+    margin: 0;
+}
+@page summary-page {
+    margin: 18mm 14mm 22mm 14mm;
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: 'DejaVu Sans', Helvetica, Arial, sans-serif;
+    font-size: 9.5pt;
+    color: #1a1a2e;
+    line-height: 1.45;
+}
+
+/* ── Page-break utilities ───────────────────────────────────────────────── */
+.page-after  { page-break-after:  always; }
+.page-before { page-break-before: always; }
+.no-break    { page-break-inside: avoid; }
+
+/* ── Cover page ─────────────────────────────────────────────────────────── */
+.cover {
+    page: cover-page;
+    width:  210mm;
+    height: 297mm;
+    background-color: #0f3460;
+    color: #ffffff;
+    padding: 24mm 18mm;
+}
+
+.cover-top {
+    display: table;
+    width: 100%;
+    margin-bottom: 12mm;
+}
+.cover-top-logo { display: table-cell; vertical-align: middle; }
+.cover-top-meta { display: table-cell; vertical-align: middle; text-align: right; font-size: 8pt; color: #a0b0c8; }
+
+.logo-box {
+    display: inline-block;
+    border: 2px solid #3498db;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 13pt;
+    font-weight: bold;
+    letter-spacing: 2px;
+    color: #3498db;
+}
+
+.cover-title {
+    font-size: 10pt;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: #a0b0c8;
+    margin-bottom: 8mm;
+}
+
+.cover-plate {
+    font-size: 38pt;
+    font-weight: bold;
+    letter-spacing: 6px;
+    font-family: 'DejaVu Sans Mono', monospace;
+    color: #ffffff;
+    margin-bottom: 6mm;
+}
+
+.status-banner {
+    text-align: center;
+    font-size: 16pt;
+    font-weight: bold;
+    letter-spacing: 4px;
+    padding: 10px 24px;
+    border-radius: 5px;
+    margin-bottom: 10mm;
+    display: inline-block;
+}
+.banner-passed    { background: #27ae60; color: #fff; }
+.banner-attention { background: #e74c3c; color: #fff; }
+
+.cover-stats {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8mm;
+}
+.cover-stats td {
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.12);
+    font-size: 9pt;
+    vertical-align: middle;
+}
+.cover-stats td.label  { color: #a0b0c8; width: 40%; }
+.cover-stats td.value  { color: #ffffff; font-weight: bold; }
+
+.cover-footer {
+    position: absolute;
+    bottom: 12mm;
+    left: 18mm;
+    right: 18mm;
+    font-size: 7.5pt;
+    color: #6a7a8c;
+    border-top: 1px solid rgba(255,255,255,0.15);
+    padding-top: 5px;
+}
+
+/* ── Section heading ────────────────────────────────────────────────────── */
+.section-heading {
+    font-size: 13pt;
+    font-weight: bold;
+    color: #0f3460;
+    border-bottom: 2.5px solid #3498db;
+    padding-bottom: 4px;
+    margin-bottom: 8mm;
+}
+
+.page-label {
+    font-size: 7.5pt;
+    color: #aaaaaa;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 6mm;
+}
+
+/* ── 360° image grid ────────────────────────────────────────────────────── */
+.image-grid {
+    width: 100%;
+    border-collapse: collapse;
+}
+.image-grid td {
+    width: 33.33%;
+    padding: 4px;
+    text-align: center;
+    vertical-align: top;
+}
+.image-grid img {
+    width: 100%;
+    height: 48mm;
+    object-fit: cover;
+    border: 1px solid #dee2e6;
+    border-radius: 3px;
+    display: block;
+}
+.angle-label {
+    font-size: 7pt;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #555;
+    margin-top: 3px;
+}
+
+/* ── Damage page ────────────────────────────────────────────────────────── */
+.damage-header {
+    display: table;
+    width: 100%;
+    margin-bottom: 6mm;
+}
+.damage-header-left  { display: table-cell; vertical-align: middle; }
+.damage-header-right { display: table-cell; vertical-align: middle; text-align: right; }
+
+.class-badge {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 10pt;
+    font-weight: bold;
+    color: #fff;
+    letter-spacing: 1px;
+}
+.badge-scratch      { background: #e74c3c; }
+.badge-dent         { background: #2980b9; }
+.badge-paint_damage { background: #e67e22; }
+.badge-crack        { background: #8e44ad; }
+
+.new-flag {
+    display: inline-block;
+    background: #e74c3c;
+    color: #fff;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 8pt;
+    font-weight: bold;
+    margin-left: 6px;
+}
+.existing-flag {
+    display: inline-block;
+    background: #7f8c8d;
+    color: #fff;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 8pt;
+    margin-left: 6px;
+}
+
+.damage-images {
+    display: table;
+    width: 100%;
+    margin-bottom: 6mm;
+}
+.damage-crop-cell {
+    display: table-cell;
+    width: 68%;
+    padding-right: 5mm;
+    vertical-align: top;
+}
+.damage-inset-cell {
+    display: table-cell;
+    width: 32%;
+    vertical-align: top;
+}
+.damage-crop {
+    width: 100%;
+    max-height: 100mm;
+    object-fit: contain;
+    border: 1.5px solid #dee2e6;
+    border-radius: 4px;
+    display: block;
+}
+.damage-inset {
+    width: 100%;
+    height: 52mm;
+    object-fit: cover;
+    border: 1px solid #dee2e6;
+    border-radius: 3px;
+    display: block;
+}
+.inset-label {
+    font-size: 6.5pt;
+    color: #888;
+    text-align: center;
+    margin-top: 2px;
+}
+
+.damage-meta-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+}
+.damage-meta-table tr td:first-child {
+    color: #666;
+    width: 40%;
+    padding: 4px 0;
+}
+.damage-meta-table tr td:last-child {
+    font-weight: bold;
+    color: #1a1a2e;
+}
+.damage-meta-table tr {
+    border-bottom: 1px solid #ecf0f1;
+}
+
+/* ── Summary / final page ───────────────────────────────────────────────── */
+.summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 8mm;
+    font-size: 9pt;
+}
+.summary-table th {
+    background: #2c3e50;
+    color: #fff;
+    padding: 7px 10px;
+    text-align: left;
+    font-size: 8.5pt;
+    letter-spacing: 0.5px;
+}
+.summary-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #ecf0f1;
+}
+.summary-table tr:nth-child(even) td { background: #f8f9fa; }
+
+.diff-box {
+    border: 1.5px solid #e74c3c;
+    border-radius: 5px;
+    padding: 8mm 10mm;
+    margin-bottom: 8mm;
+    background: #fdf3f3;
+}
+.diff-box h3 { color: #c0392b; margin-bottom: 4mm; }
+.diff-stat {
+    display: inline-block;
+    margin-right: 8mm;
+    text-align: center;
+}
+.diff-stat .num { font-size: 22pt; font-weight: bold; }
+.diff-stat .lbl { font-size: 7.5pt; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+.diff-stat.red .num   { color: #e74c3c; }
+.diff-stat.green .num { color: #27ae60; }
+.diff-stat.gray .num  { color: #7f8c8d; }
+
+.qr-section {
+    display: table;
+    width: 100%;
+    margin-top: 8mm;
+}
+.qr-code-cell { display: table-cell; width: 36mm; vertical-align: middle; }
+.qr-text-cell { display: table-cell; vertical-align: middle; padding-left: 6mm; }
+.qr-code { width: 32mm; height: 32mm; border: 1px solid #ddd; border-radius: 3px; }
+
+.report-footer {
+    margin-top: 8mm;
+    font-size: 7.5pt;
+    color: #aaa;
+    border-top: 1px solid #eee;
+    padding-top: 4mm;
+    text-align: center;
+}
+</style>
+</head>
+<body>
+
+{# ── COVER PAGE ─────────────────────────────────────────────────────────── #}
+<div class="cover page-after" style="position:relative;">
+  <div class="cover-top">
+    <div class="cover-top-logo">
+      <span class="logo-box">◈ DamageVision</span>
+    </div>
+    <div class="cover-top-meta">
+      Generated: {{ generated_at }}<br>
+      Confidential — Internal Use
+    </div>
+  </div>
+
+  <p class="cover-title">Vehicle Inspection Report</p>
+
+  <p class="cover-plate">{{ plate_number }}</p>
+
+  <div class="status-banner {{ 'banner-passed' if not has_new_damage else 'banner-attention' }}">
+    {{ 'PASSED' if not has_new_damage else 'ATTENTION REQUIRED' }}
+  </div>
+
+  <table class="cover-stats">
+    <tr><td class="label">Scan ID</td><td class="value" style="font-family:monospace;font-size:8pt;">{{ scan_id }}</td></tr>
+    <tr><td class="label">Date &amp; Time</td><td class="value">{{ scan_date }}  {{ scan_time }}</td></tr>
+    {% if location_tag %}<tr><td class="label">Location</td><td class="value">{{ location_tag }}</td></tr>{% endif %}
+    <tr><td class="label">Camera Angles</td><td class="value">{{ camera_count }}</td></tr>
+    <tr><td class="label">Total Damages</td><td class="value">{{ total_damages }}</td></tr>
+    <tr><td class="label">New Damages</td><td class="value" style="{{ 'color:#e74c3c;' if new_damages > 0 else '' }}">{{ new_damages }}</td></tr>
+  </table>
+
+  <div class="cover-footer">
+    DamageVision 360° Inspection System &nbsp;·&nbsp; {{ company_name }} &nbsp;·&nbsp; Page 1
+  </div>
+</div>
+
+{# ── PAGE 2: 360° IMAGE GRID ─────────────────────────────────────────────── #}
+<div class="page-after">
+  <p class="page-label">360° Inspection Overview</p>
+  <h2 class="section-heading">Camera Coverage — All Angles</h2>
+
+  <table class="image-grid">
+    {% set angles = ['front', 'rear', 'left', 'right', 'front_oblique', 'rear_oblique'] %}
+    {% for row in range(2) %}
+    <tr>
+      {% for col in range(3) %}
+      {% set angle = angles[row * 3 + col] %}
+      <td>
+        {% if angle in images_by_angle %}
+        <img src="data:image/jpeg;base64,{{ images_by_angle[angle] }}" alt="{{ angle }}">
+        {% else %}
+        <div style="width:100%;height:48mm;background:#ecf0f1;border:1px solid #dee2e6;border-radius:3px;"></div>
+        {% endif %}
+        <p class="angle-label">{{ angle.replace('_', ' ') }}</p>
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+
+  {% if total_damages == 0 %}
+  <div style="margin-top:12mm;text-align:center;color:#27ae60;font-size:12pt;font-weight:bold;">
+    ✓ No damage detected in this inspection
+  </div>
+  {% endif %}
+</div>
+
+{# ── PAGES 3+: ONE PAGE PER DAMAGE ──────────────────────────────────────── #}
+{% for dmg in damages %}
+<div class="{{ 'page-after' if not loop.last else '' }}">
+  <p class="page-label">Damage {{ loop.index }} of {{ damages|length }}</p>
+
+  <div class="damage-header no-break">
+    <div class="damage-header-left">
+      <span class="class-badge badge-{{ dmg.cls }}">{{ dmg.cls.replace('_', ' ').title() }}</span>
+      {% if dmg.is_new == true %}
+        <span class="new-flag">NEW DAMAGE</span>
+      {% elif dmg.is_new == false %}
+        <span class="existing-flag">Existing</span>
+      {% endif %}
+    </div>
+    <div class="damage-header-right" style="font-size:8pt;color:#666;">
+      {{ dmg.angle.replace('_', ' ').title() }} camera &nbsp;·&nbsp; {{ dmg.confidence_pct }} confidence
+    </div>
+  </div>
+
+  <div class="damage-images no-break" style="margin-bottom:5mm;">
+    <div class="damage-crop-cell">
+      {% if dmg.crop_b64 %}
+      <img class="damage-crop" src="data:image/jpeg;base64,{{ dmg.crop_b64 }}" alt="Damage crop">
+      {% else %}
+      <div style="width:100%;height:80mm;background:#ecf0f1;border:1px solid #ddd;border-radius:4px;"></div>
+      {% endif %}
+    </div>
+    <div class="damage-inset-cell">
+      {% if dmg.full_image_b64 %}
+      <img class="damage-inset" src="data:image/jpeg;base64,{{ dmg.full_image_b64 }}" alt="Full view">
+      {% else %}
+      <div style="width:100%;height:52mm;background:#ecf0f1;border:1px solid #ddd;border-radius:3px;"></div>
+      {% endif %}
+      <p class="inset-label">Full camera view ({{ dmg.angle.replace('_',' ') }})</p>
+    </div>
+  </div>
+
+  <table class="damage-meta-table no-break">
+    <tr><td>Detection ID</td><td style="font-family:monospace;font-size:8pt;">{{ dmg.id }}</td></tr>
+    <tr><td>Damage Class</td><td>{{ dmg.cls.replace('_',' ').title() }}</td></tr>
+    <tr><td>Confidence</td><td>{{ dmg.confidence_pct }}</td></tr>
+    <tr><td>Bounding Box</td><td style="font-family:monospace;font-size:8pt;">
+      x₁={{ dmg.bbox[0] }} y₁={{ dmg.bbox[1] }} x₂={{ dmg.bbox[2] }} y₂={{ dmg.bbox[3] }}
+      &nbsp; ({{ dmg.bbox[2] - dmg.bbox[0] }}×{{ dmg.bbox[3] - dmg.bbox[1] }} px)
+    </td></tr>
+    <tr><td>Mask Area</td><td>{{ "{:,}".format(dmg.mask_area_px) }} px &nbsp;({{ "%.2f"|format(dmg.mask_area_pct) }}% of frame)</td></tr>
+    <tr><td>Camera Angle</td><td>{{ dmg.angle.replace('_', ' ').title() }}</td></tr>
+    <tr><td>Status</td><td>
+      {% if dmg.is_new == true %}<span style="color:#e74c3c;font-weight:bold;">New damage — not present in prior scan</span>
+      {% elif dmg.is_new == false %}<span style="color:#7f8c8d;">Pre-existing damage</span>
+      {% else %}<span style="color:#aaa;">No prior scan available</span>
+      {% endif %}
+    </td></tr>
+  </table>
+</div>
+{% endfor %}
+
+{# ── FINAL PAGE: SUMMARY + QR ─────────────────────────────────────────────── #}
+<div>
+  <p class="page-label">Summary &amp; Sign-off</p>
+  <h2 class="section-heading">Damage Summary</h2>
+
+  {% if summary_by_class %}
+  <table class="summary-table no-break">
+    <thead>
+      <tr>
+        <th>Damage Class</th>
+        <th>Count</th>
+        <th>Total Area (px)</th>
+        <th>Avg Confidence</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in summary_by_class %}
+      <tr>
+        <td>
+          <span class="class-badge badge-{{ row.cls }}" style="font-size:8pt;padding:2px 10px;">
+            {{ row.cls.replace('_',' ').title() }}
+          </span>
+        </td>
+        <td>{{ row.count }}</td>
+        <td>{{ "{:,}".format(row.total_area_px) }}</td>
+        <td>{{ "%.1f"|format(row.avg_confidence * 100) }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:#27ae60;font-weight:bold;margin-bottom:8mm;">✓ No damage detected</p>
+  {% endif %}
+
+  {# Diff summary box #}
+  {% if diff %}
+  <div class="diff-box no-break">
+    <h3>Comparison vs Prior Scan</h3>
+    <div style="margin-top:5mm;">
+      <div class="diff-stat red">
+        <div class="num">{{ diff.total_new }}</div>
+        <div class="lbl">New</div>
+      </div>
+      <div class="diff-stat green">
+        <div class="num">{{ diff.total_resolved }}</div>
+        <div class="lbl">Resolved</div>
+      </div>
+      <div class="diff-stat gray">
+        <div class="num">{{ diff.total_existing }}</div>
+        <div class="lbl">Existing</div>
+      </div>
+    </div>
+    {% if diff.prior_scan_id %}
+    <p style="font-size:8pt;color:#888;margin-top:5mm;">
+      Compared against scan <span style="font-family:monospace;">{{ diff.prior_scan_id }}</span>
+    </p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# QR code #}
+  <div class="qr-section no-break">
+    <div class="qr-code-cell">
+      <img class="qr-code" src="data:image/png;base64,{{ qr_b64 }}" alt="Scan QR">
+    </div>
+    <div class="qr-text-cell">
+      <p style="font-size:9pt;font-weight:bold;margin-bottom:3px;">View Online</p>
+      <p style="font-size:8pt;color:#666;margin-bottom:5px;">
+        Scan the QR code or visit the URL below to view this report interactively.
+      </p>
+      <p style="font-size:7.5pt;font-family:monospace;color:#3498db;word-break:break-all;">
+        {{ report_url }}
+      </p>
+    </div>
+  </div>
+
+  <div class="report-footer">
+    This report was automatically generated by DamageVision 360° Inspection System &nbsp;·&nbsp;
+    {{ company_name }} &nbsp;·&nbsp; {{ generated_at }} &nbsp;·&nbsp;
+    Scan ID: <span style="font-family:monospace;">{{ scan_id }}</span>
+  </div>
+</div>
+
+</body>
+</html>

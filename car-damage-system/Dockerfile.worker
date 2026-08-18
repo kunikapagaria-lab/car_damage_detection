@@ -1,0 +1,29 @@
+FROM python:3.11-slim AS worker
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements_backend.txt .
+COPY requirements_phase5.txt .
+RUN pip install --no-cache-dir -r requirements_backend.txt \
+    && pip install --no-cache-dir -r requirements_phase5.txt
+
+COPY core/ ./core/
+COPY db/ ./db/
+COPY storage/ ./storage/
+COPY reports/ ./reports/
+COPY alerts/ ./alerts/
+COPY tasks/ ./tasks/
+COPY alembic/ ./alembic/
+COPY alembic.ini .
+
+ENV PYTHONPATH=/app
+ENV PDF_OUTPUT_DIR=/app/reports/output
+
+CMD ["celery", "-A", "tasks.celery_app", "worker", \
+     "--loglevel=info", "--concurrency=4", "--queues=default,pdf,webhooks"]
