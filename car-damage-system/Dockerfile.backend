@@ -30,6 +30,7 @@ ENV BACKEND_PORT=8000
 
 EXPOSE 8000
 
-# Run Alembic migrations then start the server
+# Run Alembic migrations then start the server. Respects $PORT if the
+# platform injects one (e.g. Render); falls back to 8000 for local/compose.
 CMD alembic upgrade head && \
-    uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
+    uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1

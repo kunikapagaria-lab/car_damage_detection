@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import os
 import time
 from collections import deque
 from datetime import datetime, timezone
@@ -198,6 +199,7 @@ def _plate_to_out(p: PlateResult | None) -> PlateResultOut | None:
 
 
 _LPR_MAX_DIM = 640  # EasyOCR only needs a small thumbnail to read a plate
+_LPR_ENABLED = os.environ.get("LPR_ENABLED", "true").lower() == "true"
 
 
 async def _run_inspection(
@@ -210,14 +212,17 @@ async def _run_inspection(
     predictor = get_predictor()
     t0 = time.monotonic()
 
-    # Give EasyOCR a small thumbnail — plates are readable at 640px,
-    # and scanning a 1920px image on CPU takes 20+ seconds.
-    lpr_image = _cap_resolution(image, _LPR_MAX_DIM)
-
-    plate_result, damages = await asyncio.gather(
-        loop.run_in_executor(None, partial(detect_plate, lpr_image)),
-        loop.run_in_executor(None, partial(predictor.predict, image)),
-    )
+    if _LPR_ENABLED:
+        # Give EasyOCR a small thumbnail — plates are readable at 640px,
+        # and scanning a 1920px image on CPU takes 20+ seconds.
+        lpr_image = _cap_resolution(image, _LPR_MAX_DIM)
+        plate_result, damages = await asyncio.gather(
+            loop.run_in_executor(None, partial(detect_plate, lpr_image)),
+            loop.run_in_executor(None, partial(predictor.predict, image)),
+        )
+    else:
+        plate_result = None
+        damages = await loop.run_in_executor(None, partial(predictor.predict, image))
 
     elapsed_ms = (time.monotonic() - t0) * 1000.0
     _inference_latencies.append(elapsed_ms)
@@ -307,11 +312,12 @@ async def model_status() -> ModelStatusResponse:
         else 0.0
     )
 
-    lpr_available = True
-    try:
-        import easyocr  # noqa: F401
-    except ImportError:
-        lpr_available = False
+    lpr_available = _LPR_ENABLED
+    if lpr_available:
+        try:
+            import easyocr  # noqa: F401
+        except ImportError:
+            lpr_available = False
 
     return ModelStatusResponse(
         mode=info.get("mode", "dummy"),

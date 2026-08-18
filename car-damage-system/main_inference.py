@@ -36,6 +36,7 @@ logger = structlog.get_logger(__name__)
 
 _CAMERAS_CONFIG = os.environ.get("CAMERAS_CONFIG_PATH", "config/cameras.yaml")
 _FRAME_QUEUE_MAXSIZE = int(os.environ.get("FRAME_QUEUE_MAXSIZE", "50"))
+_LPR_ENABLED = os.environ.get("LPR_ENABLED", "true").lower() == "true"
 _service_start = time.monotonic()
 
 _frame_queue: asyncio.Queue
@@ -49,9 +50,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     logger.info("inference_service_starting")
 
-    # Pre-load EasyOCR model
     loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, warmup_lpr)
+
+    # Pre-load EasyOCR model (skipped on resource-constrained deployments —
+    # LPR_ENABLED=false avoids pulling in the torch-based OCR model at all;
+    # the upload flow already collects the plate number from the user)
+    if _LPR_ENABLED:
+        await loop.run_in_executor(None, warmup_lpr)
+    else:
+        logger.info("lpr_disabled_skipping_warmup")
 
     # Initialize predictor singleton + warmup
     predictor = await loop.run_in_executor(None, get_predictor)

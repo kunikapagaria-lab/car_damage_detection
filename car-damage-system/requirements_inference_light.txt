@@ -1,0 +1,16 @@
+# Lightweight inference requirements for resource-constrained deployments
+# (e.g. Render free tier — 512MB RAM). Same as requirements.txt but without
+# easyocr, which pulls in PyTorch and needs far more memory than a free
+# instance provides. Used with LPR_ENABLED=false — see main_inference.py.
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+opencv-python-headless==4.9.0.80
+numpy==1.26.4
+Pillow==10.3.0
+pydantic==2.7.1
+pydantic-settings==2.2.1
+structlog==24.1.0
+pyyaml==6.0.1
+httpx==0.27.0
+websockets==12.0

@@ -6,6 +6,7 @@ Auto-creates the three required buckets on startup if they do not exist.
 from __future__ import annotations
 
 import io
+import json
 from typing import Any
 
 import structlog
@@ -22,7 +23,27 @@ BUCKETS = [
     settings.BUCKET_THUMBNAILS,
 ]
 
+# The frontend links directly to full-image and thumbnail URLs (no
+# presigned-URL flow), so those two buckets must allow anonymous reads.
+# Crops are returned as base64 in API responses, so that bucket stays private.
+_PUBLIC_READ_BUCKETS = [
+    settings.BUCKET_FULL_IMAGES,
+    settings.BUCKET_THUMBNAILS,
+]
+
 _session = AioSession()
+
+
+def _public_read_policy(bucket: str) -> str:
+    return json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [{
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": ["s3:GetObject"],
+            "Resource": [f"arn:aws:s3:::{bucket}/*"],
+        }],
+    })
 
 
 def _client_kwargs() -> dict[str, Any]:
@@ -50,6 +71,16 @@ async def ensure_buckets() -> None:
                 else:
                     logger.error("minio_bucket_check_failed", bucket=bucket, error=str(exc))
                     raise
+
+            if bucket in _PUBLIC_READ_BUCKETS:
+                try:
+                    await s3.put_bucket_policy(
+                        Bucket=bucket, Policy=_public_read_policy(bucket)
+                    )
+                except ClientError as exc:
+                    logger.warning(
+                        "minio_bucket_policy_failed", bucket=bucket, error=str(exc)
+                    )
 
 
 async def upload_image(

@@ -1,0 +1,36 @@
+# Lightweight inference image for resource-constrained free-tier hosting
+# (e.g. Render's 512MB free instances). Skips EasyOCR/PyTorch entirely —
+# see requirements_inference_light.txt and LPR_ENABLED in main_inference.py.
+# For local dev / real hardware, use Dockerfile.inference instead.
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements_inference_light.txt .
+RUN pip install --no-cache-dir -r requirements_inference_light.txt
+
+COPY inference/ ./inference/
+COPY api/ ./api/
+COPY config/ ./config/
+COPY main_inference.py .
+
+ENV PREDICTOR_MODE=dummy
+ENV LPR_ENABLED=false
+ENV INFERENCE_HOST=0.0.0.0
+ENV INFERENCE_PORT=8001
+ENV CAMERAS_CONFIG_PATH=config/cameras.yaml
+
+EXPOSE 8001
+
+# Respects $PORT if the platform injects one (e.g. Render); falls back to
+# 8001 for local/compose.
+CMD ["sh", "-c", "uvicorn main_inference:app --host 0.0.0.0 --port ${PORT:-8001} --workers 1"]

@@ -1,0 +1,82 @@
+databases:
+  - name: car-damage-db
+    plan: free
+    databaseName: car_damage
+    user: car_damage
+
+services:
+  - name: car-damage-redis
+    type: keyvalue
+    plan: free
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: everywhere
+
+  - name: car-damage-api
+    type: web
+    runtime: docker
+    plan: free
+    rootDir: ./car-damage-system
+    dockerfilePath: ./Dockerfile.backend
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: car-damage-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: car-damage-redis
+          property: connectionString
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: MAX_UPLOAD_SIZE_MB
+        value: "50"
+      - key: COMPANY_NAME
+        value: DamageVision Systems
+      - key: WEBHOOK_SECRET
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      # Object storage — Cloudflare R2 (S3-compatible). Fill these in from
+      # your R2 bucket's API token page; see README for the exact steps.
+      - key: MINIO_ENDPOINT
+        sync: false
+      - key: MINIO_ACCESS_KEY
+        sync: false
+      - key: MINIO_SECRET_KEY
+        sync: false
+      - key: MINIO_SECURE
+        value: "true"
+      - key: BUCKET_FULL_IMAGES
+        value: car-damage-full-images
+      - key: BUCKET_CROPS
+        value: car-damage-crops
+      - key: BUCKET_THUMBNAILS
+        value: car-damage-thumbnails
+      # Set to your Vercel frontend URL once it's deployed, comma-separated
+      # if there's more than one (e.g. preview + production).
+      - key: CORS_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+
+  - name: car-damage-inference
+    type: web
+    runtime: docker
+    plan: free
+    rootDir: ./car-damage-system
+    dockerfilePath: ./Dockerfile.inference.light
+    healthCheckPath: /health
+    envVars:
+      - key: PREDICTOR_MODE
+        value: dummy
+      - key: LPR_ENABLED
+        value: "false"
+      - key: CAMERAS_CONFIG_PATH
+        value: config/cameras.yaml
+      - key: DUMMY_INFERENCE_LATENCY_MS
+        value: "80"
