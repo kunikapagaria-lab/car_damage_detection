@@ -21,6 +21,7 @@ import io
 import random
 import sys
 import time
+from pathlib import Path
 
 import httpx
 from PIL import Image, ImageDraw, ImageFont
@@ -30,80 +31,59 @@ INFERENCE_URL = "http://localhost:8001"
 
 ANGLES = ["front", "rear", "left", "right"]
 
-# (plate, color, scan_count) — scan_count > 1 gives each vehicle a damage
-# timeline so the diff viewer and alerts feed have something to show.
+# scan_count > 1 gives each vehicle a damage timeline so the diff viewer and
+# alerts feed have something to show.
 VEHICLES = [
-    ("MH12AB1234", (200, 60, 60), 3),
-    ("DL08CAF9922", (60, 130, 200), 2),
-    ("KA05MN4567", (90, 180, 90), 3),
-    ("TN09XY7788", (210, 170, 40), 1),
-    ("GJ01RT3311", (150, 90, 200), 2),
-    ("UP16BQ6541", (80, 80, 80), 4),
-    ("RJ14CD8890", (220, 120, 60), 1),
-    ("WB20EF2245", (40, 160, 160), 2),
+    ("MH12AB1234", 3),
+    ("DL08CAF9922", 2),
+    ("KA05MN4567", 3),
+    ("TN09XY7788", 1),
+    ("GJ01RT3311", 2),
+    ("UP16BQ6541", 4),
+    ("RJ14CD8890", 1),
+    ("WB20EF2245", 2),
 ]
 
+# Real photos (Pexels, free license — see sample_photos/SOURCE.md), one set
+# per angle. Each vehicle is pinned to one photo per angle (by index) so its
+# own scan history stays visually consistent while different vehicles in
+# the fleet show different cars.
+PHOTOS_DIR = Path(__file__).parent / "sample_photos"
+PHOTO_SETS = {
+    "front": ["front_1.jpg", "front_2.jpg", "front_3.jpg", "front_4.jpg"],
+    "rear": ["rear_1.jpg", "rear_2.jpg"],
+    "left": ["side_1.jpg", "side_2.jpg"],
+    "right": ["side_1.jpg", "side_2.jpg"],
+}
 
-def _lerp(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
-    return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))  # type: ignore[return-value]
 
+def make_plate_image(plate: str, vehicle_index: int, angle: str, variant: int) -> bytes:
+    """Load a real vehicle photo for this angle, overlay the plate number,
+    and add a light per-scan pixel jitter — the dummy predictor hashes
+    pixel bytes for its random seed, so repeated scans of the same base
+    photo need slightly different bytes to produce varied detections."""
+    photos = PHOTO_SETS[angle]
+    photo_path = PHOTOS_DIR / photos[vehicle_index % len(photos)]
+    img = Image.open(photo_path).convert("RGB")
 
-def _vertical_gradient(w: int, h: int, top: tuple[int, int, int], bottom: tuple[int, int, int]) -> Image.Image:
-    img = Image.new("RGB", (w, h))
+    rng = random.Random(f"{plate}-{angle}-{variant}")
     draw = ImageDraw.Draw(img)
-    for y in range(h):
-        draw.line([(0, y), (w, y)], fill=_lerp(top, bottom, y / h))
-    return img
-
-
-def make_plate_image(plate: str, body_color: tuple[int, int, int], variant: int) -> bytes:
-    """Render a stylized car-silhouette 'vehicle photo' — same look as the
-    app's own SamplePresets.tsx demo gallery, ported to PIL so seeded scans
-    show an actual car rather than an abstract placeholder. The dummy
-    predictor just hashes pixel bytes for its random seed, so content only
-    needs to vary enough between scans to produce different detections."""
-    w, h = 640, 400
-    img = _vertical_gradient(w, h, (30, 41, 59), (2, 6, 23))
-    draw = ImageDraw.Draw(img, "RGBA")
-    rng = random.Random(f"{plate}-{variant}")
-
-    # Slight per-vehicle/per-scan color jitter so repeated scans still hash
-    # to different bytes (needed for the dummy predictor's varied output).
-    jitter = lambda c: max(20, min(235, c + rng.randint(-12, 12)))  # noqa: E731
-    shade = tuple(jitter(c) for c in body_color)
-    dark = tuple(max(15, c - 60) for c in shade)
-
-    # Car body silhouette (front-3/4 view), matching SamplePresets.tsx
-    body = [
-        (100, 260), (120, 200), (240, 150), (360, 140), (460, 180),
-        (540, 220), (530, 280), (450, 280), (210, 280), (130, 280),
-    ]
-    draw.polygon(body, fill=shade, outline=(148, 163, 184))
-
-    # Windows
-    windows = [(245, 155), (355, 145), (445, 185), (350, 190), (250, 190)]
-    draw.polygon(windows, fill=(148, 163, 184, 90), outline=(203, 213, 225))
-
-    # Wheels
-    for cx in (170, 490):
-        cy = 280
-        draw.ellipse([cx - 38, cy - 38, cx + 38, cy + 38], fill=(15, 23, 42), outline=(100, 116, 139), width=4)
-        draw.ellipse([cx - 22, cy - 22, cx + 22, cy + 22], fill=(148, 163, 184))
-
-    # Headlight
-    draw.rectangle([102, 210, 122, 225], fill=(254, 240, 138))
-
-    # Body shading line
-    draw.line([body[1], body[8]], fill=dark + (140,), width=2)
+    for _ in range(15):
+        x, y = rng.randint(0, img.width - 1), rng.randint(0, img.height - 1)
+        draw.point((x, y), fill=(rng.randint(0, 255), rng.randint(0, 255), rng.randint(0, 255)))
 
     try:
-        font = ImageFont.truetype("arial.ttf", 28)
+        font = ImageFont.truetype("arial.ttf", max(20, img.width // 24))
     except OSError:
         font = ImageFont.load_default()
-    draw.rectangle([20, h - 44, 220, h - 12], fill=(255, 255, 255))
-    draw.text((30, h - 40), plate, fill=(15, 23, 42), font=font)
+    pad = 10
+    label_w, label_h = int(img.width * 0.32), int(img.height * 0.08)
+    x0, y0 = img.width - label_w - pad, img.height - label_h - pad
+    draw.rectangle([x0, y0, x0 + label_w, y0 + label_h], fill=(255, 255, 255))
+    draw.text((x0 + pad, y0 + pad // 2), plate, fill=(15, 23, 42), font=font)
+
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=85)
+    img.save(buf, format="JPEG", quality=88)
     return buf.getvalue()
 
 
@@ -184,11 +164,11 @@ def main() -> None:
         register_demo_webhook(client)
 
         total_scans = 0
-        for plate, color, scan_count in VEHICLES:
+        for vehicle_index, (plate, scan_count) in enumerate(VEHICLES):
             print(f"\nSeeding {plate} ({scan_count} scan(s))...")
             for i in range(scan_count):
                 angle = ANGLES[i % len(ANGLES)]
-                image_bytes = make_plate_image(plate, color, variant=i)
+                image_bytes = make_plate_image(plate, vehicle_index, angle, variant=i)
                 inspect_result = inspect_frame(client, image_bytes, camera_id=f"cam_{angle}")
                 scan = submit_scan(client, plate, angle, image_bytes, inspect_result)
                 n_damages = len(inspect_result["damages"])
