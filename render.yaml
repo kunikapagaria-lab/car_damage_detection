@@ -51,12 +51,15 @@ services:
         sync: false
       - key: MINIO_SECURE
         value: "true"
+      # All three point at the same R2 bucket — object keys already avoid
+      # collisions (thumbnails end in _thumb, crops use a distinct pattern),
+      # and R2 API tokens are typically scoped to one bucket anyway.
       - key: BUCKET_FULL_IMAGES
-        value: car-damage-full-images
+        value: damagevision-demo
       - key: BUCKET_CROPS
-        value: car-damage-crops
+        value: damagevision-demo
       - key: BUCKET_THUMBNAILS
-        value: car-damage-thumbnails
+        value: damagevision-demo
       # Set to your Vercel frontend URL once it's deployed, comma-separated
       # if there's more than one (e.g. preview + production).
       - key: CORS_ORIGINS

@@ -36,8 +36,14 @@ export const BUCKET = {
   THUMBS: 'car-damage-thumbnails',
 } as const;
 
+// MinIO serves objects at <host>/<bucket>/<key> (path-style). Cloudflare R2's
+// public r2.dev URL is scoped to a single bucket already, so it serves
+// objects at <host>/<key> with no bucket segment — set
+// NEXT_PUBLIC_MINIO_PATH_STYLE=false when pointing at R2.
+const MINIO_PATH_STYLE = process.env.NEXT_PUBLIC_MINIO_PATH_STYLE !== 'false';
+
 export function minioUrl(bucket: string, path: string): string {
-  return `${MINIO_URL}/${bucket}/${path}`;
+  return MINIO_PATH_STYLE ? `${MINIO_URL}/${bucket}/${path}` : `${MINIO_URL}/${path}`;
 }
 
 // ── SWR fetcher ───────────────────────────────────────────────────────────────
