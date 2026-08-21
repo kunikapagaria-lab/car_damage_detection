@@ -686,10 +686,12 @@ export default function UploadPage() {
   }, []);
 
   const handleSelectPreset = useCallback(async (dataUrl: string, name: string) => {
-    // Convert dataURL to File object
+    // Convert dataURL/static asset URL to a File object
     const res = await fetch(dataUrl);
     const blob = await res.blob();
-    const file = new File([blob], `${name.replace(/\s+/g, '_')}.png`, { type: 'image/png' });
+    const contentType = blob.type || 'image/jpeg';
+    const ext = contentType === 'image/png' ? 'png' : 'jpg';
+    const file = new File([blob], `${name.replace(/\s+/g, '_')}.${ext}`, { type: contentType });
 
     // Load into front slot and copy to other slots for quick demo test
     setSlots(() => {
