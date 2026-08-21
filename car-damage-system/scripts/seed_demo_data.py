@@ -92,26 +92,41 @@ def inspect_frame(client: httpx.Client, image_bytes: bytes, camera_id: str) -> d
     return resp.json()
 
 
-def submit_scan(client: httpx.Client, plate: str, angle: str, image_bytes: bytes, inspect_result: dict) -> dict:
+def submit_scan(
+    client: httpx.Client,
+    plate: str,
+    location_tag: str,
+    frames: list[tuple[str, bytes, dict]],
+) -> dict:
+    """Submit one scan bundling every angle captured on this visit — a real
+    inspection sees all sides of the vehicle in a single pass, not one
+    angle per visit, and the scan-detail page's image grid is built for
+    exactly this."""
     import json
+
+    inspection_results = [{
+        "camera_id": inspect_result["camera_id"],
+        "angle": angle,
+        "damages": inspect_result["damages"],
+        "plate_result": inspect_result["plate_result"],
+        "inference_time_ms": inspect_result["inference_time_ms"],
+        "captured_at": inspect_result["captured_at"],
+    } for angle, _, inspect_result in frames]
 
     meta = {
         "plate_number": plate,
-        "location_tag": "Gate 1",
-        "inspection_results": [{
-            "camera_id": inspect_result["camera_id"],
-            "angle": angle,
-            "damages": inspect_result["damages"],
-            "plate_result": inspect_result["plate_result"],
-            "inference_time_ms": inspect_result["inference_time_ms"],
-            "captured_at": inspect_result["captured_at"],
-        }],
+        "location_tag": location_tag,
+        "inspection_results": inspection_results,
     }
+    files = [
+        ("images", (f"{inspect_result['camera_id']}.jpg", image_bytes, "image/jpeg"))
+        for _, image_bytes, inspect_result in frames
+    ]
     resp = client.post(
         f"{BACKEND_URL}/api/v1/scans",
         data={"metadata": json.dumps(meta)},
-        files={"images": (f"{inspect_result['camera_id']}.jpg", image_bytes, "image/jpeg")},
-        timeout=30,
+        files=files,
+        timeout=60,
     )
     resp.raise_for_status()
     body = resp.json()
@@ -151,6 +166,9 @@ def wait_for_services(client: httpx.Client) -> None:
             sys.exit(f"ERROR: {name} not reachable at {url} — start the services first.")
 
 
+LOCATIONS = ["Gate 1", "Gate 2", "North Entrance", "Service Bay 3"]
+
+
 def main() -> None:
     print("Checking services...")
     with httpx.Client() as client:
@@ -161,12 +179,16 @@ def main() -> None:
         for vehicle_index, (plate, scan_count) in enumerate(VEHICLES):
             print(f"\nSeeding {plate} ({scan_count} scan(s))...")
             for i in range(scan_count):
-                angle = ANGLES[i % len(ANGLES)]
-                image_bytes = make_plate_image(plate, vehicle_index, angle, variant=i)
-                inspect_result = inspect_frame(client, image_bytes, camera_id=f"cam_{angle}")
-                scan = submit_scan(client, plate, angle, image_bytes, inspect_result)
-                n_damages = len(inspect_result["damages"])
-                print(f"  scan {i + 1}/{scan_count}: {n_damages} damage(s) detected -> scan {scan['id']}")
+                frames: list[tuple[str, bytes, dict]] = []
+                for angle in ANGLES:
+                    image_bytes = make_plate_image(plate, vehicle_index, angle, variant=i)
+                    inspect_result = inspect_frame(client, image_bytes, camera_id=f"cam_{angle}")
+                    frames.append((angle, image_bytes, inspect_result))
+
+                location = LOCATIONS[(vehicle_index + i) % len(LOCATIONS)]
+                scan = submit_scan(client, plate, location, frames)
+                n_damages = sum(len(f[2]["damages"]) for f in frames)
+                print(f"  scan {i + 1}/{scan_count}: {n_damages} damage(s) across {len(frames)} angles -> scan {scan['id']}")
                 total_scans += 1
                 time.sleep(0.3)
 
