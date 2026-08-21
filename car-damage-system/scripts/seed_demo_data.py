@@ -8,11 +8,10 @@ webhook pipeline.
 Usage (with both services already running):
     python scripts/seed_demo_data.py
 
-Note: not idempotent — re-running adds more scan history to the same
-vehicles (harmless, gives a richer timeline) but also registers another
-webhook row each time, which will duplicate alert entries per scan. Fine for
-occasional re-seeding; if you run it often, prune extra rows from
-webhook_registrations.
+Note: re-running adds more scan history to the same vehicles rather than
+replacing it (webhook registration is idempotent by URL, so alerts won't
+duplicate, but repeated runs will still pile up scan history over time). For
+a clean demo dataset, wipe the DB first rather than relying on re-seeding.
 """
 
 from __future__ import annotations
@@ -32,16 +31,13 @@ INFERENCE_URL = "http://localhost:8001"
 ANGLES = ["front", "rear", "left", "right"]
 
 # scan_count > 1 gives each vehicle a damage timeline so the diff viewer and
-# alerts feed have something to show.
+# alerts feed have something to show. Kept small — all vehicles currently
+# share the same underlying real photo set (see PHOTO_SETS below), so more
+# entries would just be the identical car under different plates.
 VEHICLES = [
     ("MH12AB1234", 3),
     ("DL08CAF9922", 2),
-    ("KA05MN4567", 3),
-    ("TN09XY7788", 1),
-    ("GJ01RT3311", 2),
-    ("UP16BQ6541", 4),
-    ("RJ14CD8890", 1),
-    ("WB20EF2245", 2),
+    ("KA05MN4567", 2),
 ]
 
 # Real multi-angle inspection photos of one vehicle, supplied by the

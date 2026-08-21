@@ -440,6 +440,17 @@ async def register_webhook(
     secret: str,
     db: AsyncSession,
 ) -> WebhookRegistration:
+    existing = await db.execute(
+        select(WebhookRegistration).where(
+            WebhookRegistration.url == url,
+            WebhookRegistration.is_active.is_(True),
+        )
+    )
+    hook = existing.scalars().first()
+    if hook is not None:
+        logger.info("webhook_already_registered", url=url, id=str(hook.id))
+        return hook
+
     hook = WebhookRegistration(url=url, secret=secret)
     db.add(hook)
     await db.flush()
