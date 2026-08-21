@@ -685,19 +685,30 @@ export default function UploadPage() {
     });
   }, []);
 
-  const handleSelectPreset = useCallback(async (dataUrl: string, name: string) => {
-    // Convert dataURL/static asset URL to a File object
-    const res = await fetch(dataUrl);
-    const blob = await res.blob();
-    const contentType = blob.type || 'image/jpeg';
-    const ext = contentType === 'image/png' ? 'png' : 'jpg';
-    const file = new File([blob], `${name.replace(/\s+/g, '_')}.${ext}`, { type: contentType });
+  const handleSelectPreset = useCallback(async (images: Partial<Record<AngleValue, string>>, name: string) => {
+    // Convert each angle's real photo URL to its own File object — a
+    // genuine multi-angle inspection, not one photo copied into every slot.
+    const urlToFile = async (url: string, angle: string) => {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const contentType = blob.type || 'image/jpeg';
+      const ext = contentType === 'image/png' ? 'png' : 'jpg';
+      return new File([blob], `${name.replace(/\s+/g, '_')}_${angle}.${ext}`, { type: contentType });
+    };
 
-    // Load into front slot and copy to other slots for quick demo test
+    const files = Object.fromEntries(
+      await Promise.all(
+        ANGLES.map(async a => {
+          const url = images[a.value] ?? images.front ?? Object.values(images)[0]!;
+          return [a.value, await urlToFile(url, a.value)] as const;
+        })
+      )
+    ) as Record<AngleValue, File>;
+
     setSlots(() => {
       const next = initSlots();
       ANGLES.forEach(a => {
-        next[a.value] = { ...EMPTY_SLOT, file, preview: dataUrl };
+        next[a.value] = { ...EMPTY_SLOT, file: files[a.value], preview: URL.createObjectURL(files[a.value]) };
       });
       return next;
     });
@@ -708,7 +719,7 @@ export default function UploadPage() {
 
     await Promise.all(
       ANGLES.map(a =>
-        inspectImageFile(file, a.camId, '')
+        inspectImageFile(files[a.value], a.camId, '')
           .then(result => {
             updateSlot(a.value, { loading: false, result });
           })

@@ -44,21 +44,19 @@ VEHICLES = [
     ("WB20EF2245", 2),
 ]
 
-# Real photos (Pexels, free license — see sample_photos/SOURCE.md), one set
-# per angle. Each vehicle is pinned to one photo per angle (by index) so its
-# own scan history stays visually consistent while different vehicles in
-# the fleet show different cars.
+# Real multi-angle inspection photos of one vehicle, supplied by the
+# project owner — see sample_photos/SOURCE.md.
 PHOTOS_DIR = Path(__file__).parent / "sample_photos"
 PHOTO_SETS = {
-    "front": ["front_1.jpg", "front_2.jpg", "front_3.jpg", "front_4.jpg"],
-    "rear": ["rear_1.jpg", "rear_2.jpg"],
-    "left": ["side_1.jpg", "side_2.jpg"],
-    "right": ["side_1.jpg", "side_2.jpg"],
+    "front": ["front.jpg"],
+    "rear": ["rear.jpg"],
+    "left": ["left.jpg"],
+    "right": ["right.jpg"],
 }
 
 
 def make_plate_image(plate: str, vehicle_index: int, angle: str, variant: int) -> bytes:
-    """Load a real vehicle photo for this angle, overlay the plate number,
+    """Load the real vehicle photo for this angle, overlay the plate number,
     and add a light per-scan pixel jitter — the dummy predictor hashes
     pixel bytes for its random seed, so repeated scans of the same base
     photo need slightly different bytes to produce varied detections."""

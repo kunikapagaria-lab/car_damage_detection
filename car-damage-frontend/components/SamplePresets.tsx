@@ -1,54 +1,72 @@
 'use client';
 
+type AngleValue = 'front' | 'rear' | 'left' | 'right' | 'front_oblique' | 'rear_oblique';
+
 export interface SamplePreset {
   id: string;
   name: string;
   description: string;
   badge: string;
   badgeColor: string;
-  dataUrl: string;
+  thumbnail: string;
+  images: Partial<Record<AngleValue, string>>;
 }
 
-// Real vehicle photos (Pexels, free license, no attribution required — see
-// car-damage-system/scripts/sample_photos/SOURCE.md) served as static
-// assets from /public/samples.
+// A real multi-angle inspection of one vehicle, supplied by the project
+// owner (see car-damage-system/scripts/sample_photos/SOURCE.md), served as
+// static assets from /public/samples. Every preset below loads the same
+// genuine per-angle photo set into the 6 slots — the buttons just highlight
+// a different angle/thumbnail so the gallery still reads as a choice.
+const REAL_ANGLES: Partial<Record<AngleValue, string>> = {
+  front: '/samples/front.jpg',
+  rear: '/samples/rear.jpg',
+  left: '/samples/left.jpg',
+  right: '/samples/right.jpg',
+  front_oblique: '/samples/front_oblique.jpg',
+  rear_oblique: '/samples/rear.jpg',
+};
+
 const PRESETS: SamplePreset[] = [
   {
-    id: 'dent',
-    name: 'Sample 1: Front Bumper Dent',
-    description: 'Moderate impact dent on front hood & bumper assembly.',
+    id: 'front',
+    name: 'Sample: Front Bumper Damage',
+    description: 'Cracked headlight housing and scraped front bumper.',
     badge: 'Dent • High Severity',
     badgeColor: 'bg-red-950 text-red-400 border-red-800',
-    dataUrl: '/samples/dent.jpg',
+    thumbnail: '/samples/front.jpg',
+    images: REAL_ANGLES,
   },
   {
-    id: 'scratch',
-    name: 'Sample 2: Side Door Scratch',
-    description: 'Deep paint scratch spanning front and rear left doors.',
+    id: 'side',
+    name: 'Sample: Side Panel Scratch',
+    description: 'Scuffed paint along the lower door panels.',
     badge: 'Scratch • Moderate',
     badgeColor: 'bg-amber-950 text-amber-400 border-amber-800',
-    dataUrl: '/samples/scratch.jpg',
+    thumbnail: '/samples/left.jpg',
+    images: REAL_ANGLES,
   },
   {
-    id: 'multi',
-    name: 'Sample 3: Multi-Panel Damage',
-    description: 'Multiple affected panels (front dent + rear crack).',
+    id: 'rear',
+    name: 'Sample: Rear Bumper Impact',
+    description: 'Dented and scratched rear bumper assembly.',
     badge: 'Multi-Damage • Critical',
     badgeColor: 'bg-purple-950 text-purple-400 border-purple-800',
-    dataUrl: '/samples/multi.jpg',
+    thumbnail: '/samples/rear.jpg',
+    images: REAL_ANGLES,
   },
   {
-    id: 'clean',
-    name: 'Sample 4: Pristine Vehicle',
-    description: 'Clean inspection pass with zero detected defects.',
-    badge: 'Clean Pass',
+    id: 'overview',
+    name: 'Sample: Full Vehicle Overview',
+    description: 'Complete 6-angle inspection set for this vehicle.',
+    badge: '360° Inspection',
     badgeColor: 'bg-emerald-950 text-emerald-400 border-emerald-800',
-    dataUrl: '/samples/clean.jpg',
+    thumbnail: '/samples/top.jpg',
+    images: REAL_ANGLES,
   },
 ];
 
 interface SamplePresetsProps {
-  onSelectPreset: (dataUrl: string, name: string) => void;
+  onSelectPreset: (images: Partial<Record<AngleValue, string>>, name: string) => void;
 }
 
 export function SamplePresets({ onSelectPreset }: SamplePresetsProps) {
@@ -71,13 +89,13 @@ export function SamplePresets({ onSelectPreset }: SamplePresetsProps) {
         {presets.map((preset) => (
           <button
             key={preset.id}
-            onClick={() => onSelectPreset(preset.dataUrl, preset.name)}
+            onClick={() => onSelectPreset(preset.images, preset.name)}
             className="group relative flex flex-col overflow-hidden rounded-lg border border-gray-800 bg-gray-950 text-left transition-all hover:border-emerald-600/70 hover:shadow-lg hover:shadow-emerald-950/20"
           >
             <div className="relative aspect-video w-full overflow-hidden bg-gray-900">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={preset.dataUrl}
+                src={preset.thumbnail}
                 alt={preset.name}
                 className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
               />
