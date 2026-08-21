@@ -1,212 +1,149 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { useStore } from '@/lib/store';
-import { useWebSocketFeed, useClock } from '@/lib/hooks';
-import { LiveFeedCard } from '@/components/LiveFeedCard';
-import { AlertTicker } from '@/components/AlertTicker';
-import { VehicleBlueprint } from '@/components/VehicleBlueprint';
-import { runTestInspection, type InspectResult } from '@/lib/api';
-import type { CameraAngle, WSInspectionFrame } from '@/types';
+import useSWR from 'swr';
+import { formatDistanceToNow } from 'date-fns';
+import { fetcher, urls, minioUrl, BUCKET } from '@/lib/api';
+import { InlineError } from '@/components/ErrorBoundary';
+import { Skeleton } from '@/components/Skeleton';
+import type { DashboardSummary, RecentScanSummary } from '@/types';
 
-const CAMERAS: Array<{ id: string; angle: CameraAngle }> = [
-  { id: 'cam_01', angle: 'front' },
-  { id: 'cam_02', angle: 'rear' },
-  { id: 'cam_03', angle: 'left' },
-  { id: 'cam_04', angle: 'right' },
-  { id: 'cam_05', angle: 'front_oblique' },
-  { id: 'cam_06', angle: 'rear_oblique' },
-];
+// ── Stat tile ─────────────────────────────────────────────────────────────────
 
-// ── Top bar ───────────────────────────────────────────────────────────────────
-
-function TopBar({ onSimulate }: { onSimulate: () => void }) {
-  const clock             = useClock();
-  const wsStatus          = useStore((s) => s.wsStatus);
-  const scansTodayCount   = useStore((s) => s.scansTodayCount);
-  const newDamageCount    = useStore((s) => s.newDamageCount);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const today = mounted
-    ? new Date().toLocaleDateString('en-IN', {
-        weekday: 'long', day: '2-digit', month: 'short', year: 'numeric',
-      })
-    : '';
-
+function StatTile({
+  label,
+  value,
+  accent = 'text-gray-100',
+}: {
+  label: string;
+  value: number;
+  accent?: string;
+}) {
   return (
-    <div className="flex flex-wrap items-center gap-4 border-b border-gray-800 bg-gray-950 px-6 py-3">
-      {/* Live indicator */}
-      <div className="flex items-center gap-2">
-        <span className={
-          wsStatus === 'connected'
-            ? 'h-2.5 w-2.5 rounded-full bg-red-500 shadow-[0_0_8px_#ef4444] animate-pulse'
-            : 'h-2.5 w-2.5 rounded-full bg-gray-600'
-        } />
-        <span className="text-xs font-bold uppercase tracking-widest text-gray-400">
-          {wsStatus === 'connected' ? 'LIVE' : wsStatus === 'connecting' ? 'CONNECTING…' : 'OFFLINE'}
+    <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
+      <p className="text-xs font-bold uppercase tracking-wider text-gray-500">{label}</p>
+      <p className={`mt-1 text-3xl font-black ${accent}`}>{value.toLocaleString()}</p>
+    </div>
+  );
+}
+
+// ── Recent activity row ──────────────────────────────────────────────────────
+
+function RecentActivityRow({ item }: { item: RecentScanSummary }) {
+  return (
+    <Link
+      href={`/scans/${item.scan_id}`}
+      className="flex items-center gap-3 rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2.5 hover:border-gray-700 transition-colors"
+    >
+      <div className="h-12 w-16 shrink-0 overflow-hidden rounded-md border border-gray-800 bg-gray-950">
+        {item.thumbnail_path && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={minioUrl(BUCKET.THUMBS, item.thumbnail_path)}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-mono text-sm font-bold text-gray-100">{item.plate_number}</p>
+        <p className="text-xs text-gray-500">
+          {formatDistanceToNow(new Date(item.triggered_at), { addSuffix: true })}
+        </p>
+      </div>
+      {item.new_damage_count > 0 ? (
+        <span className="shrink-0 rounded-full bg-red-900/60 px-2.5 py-0.5 text-xs font-semibold text-red-300">
+          {item.new_damage_count} new
         </span>
-      </div>
-
-      <div className="h-4 w-px bg-gray-800" />
-
-      <p className="text-sm text-gray-400" suppressHydrationWarning>
-        {today}
-        <span className="ml-3 font-mono font-bold text-gray-200" suppressHydrationWarning>{clock}</span>
-      </p>
-
-      {/* Simulate button */}
-      <button
-        onClick={onSimulate}
-        className="flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-900 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800 hover:border-gray-600 transition-colors"
-        title="Run a simulated inspection to see how the live feed works"
-      >
-        <span>▶</span> Simulate Detection
-      </button>
-
-      <div className="ml-auto flex items-center gap-6">
-        <div className="text-right">
-          <p className="text-xl font-bold text-gray-100 leading-none">{scansTodayCount}</p>
-          <p className="text-[10px] text-gray-500 uppercase tracking-wider">Scans today</p>
-        </div>
-        <div className="text-right">
-          <p className={
-            newDamageCount > 0
-              ? 'text-xl font-bold text-red-400 leading-none'
-              : 'text-xl font-bold text-gray-600 leading-none'
-          }>
-            {newDamageCount}
-          </p>
-          <p className="text-[10px] text-gray-500 uppercase tracking-wider">New damages</p>
-        </div>
-        <Link
-          href="/upload"
-          className="rounded-lg bg-emerald-800/60 border border-emerald-700 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-800"
-        >
-          📷 Upload Image
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-// ── Simulate toast ────────────────────────────────────────────────────────────
-
-function SimToast({ msg, onClose }: { msg: string; onClose: () => void }) {
-  useEffect(() => {
-    const t = setTimeout(onClose, 4000);
-    return () => clearTimeout(t);
-  }, [onClose]);
-
-  return (
-    <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-lg border border-emerald-700 bg-gray-900 px-4 py-2.5 shadow-xl text-sm text-emerald-300 animate-fade-in">
-      <span>◈</span> {msg}
-    </div>
-  );
-}
-
-// ── No signal overlay shown when WS never delivered a frame ───────────────────
-
-function ConnectionGuide() {
-  return (
-    <div className="mx-2 mb-3 rounded-lg border border-dashed border-gray-800 bg-gray-900/40 px-4 py-3 text-xs text-gray-600">
-      <span className="font-semibold text-gray-500">No camera signal</span>
-      {' '}— cards update via WebSocket when the inference service receives frames.{' '}
-      Click <span className="text-gray-400 font-semibold">Simulate Detection</span> above to test the live feed.
-    </div>
+      ) : (
+        <span className="shrink-0 rounded-full bg-gray-800 px-2.5 py-0.5 text-xs text-gray-500">
+          clean
+        </span>
+      )}
+    </Link>
   );
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function LiveDashboard() {
-  useWebSocketFeed();
-
-  const resetDailyCounters = useStore((s) => s.resetDailyCounters);
-  const setFrame           = useStore((s) => s.setFrame);
-  const addAlert           = useStore((s) => s.addAlert);
-  const frames             = useStore((s) => s.frames);
-  const hasAnyFrame        = Object.keys(frames).length > 0;
-
-  const [simMsg,      setSimMsg]      = useState<string | null>(null);
-  const [simLoading,  setSimLoading]  = useState(false);
-
-  // Reset daily counters at midnight
-  useEffect(() => {
-    const now = new Date();
-    const msUntilMidnight =
-      new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - now.getTime();
-    const timer = setTimeout(resetDailyCounters, msUntilMidnight);
-    return () => clearTimeout(timer);
-  }, [resetDailyCounters]);
-
-  const handleSimulate = useCallback(async () => {
-    if (simLoading) return;
-    setSimLoading(true);
-    setSimMsg(null);
-    try {
-      const result: InspectResult = await runTestInspection();
-      // Inject the result into the Zustand store exactly as a WS frame would
-      const frame: WSInspectionFrame = {
-        event:       'inspection_result',
-        camera_id:   'cam_01',
-        angle:       'front',
-        captured_at: new Date().toISOString(),
-        frame_hash:  Math.random().toString(36).slice(2),
-        plate:       result.plate_result as WSInspectionFrame['plate'],
-        damages:     result.damages.map((d) => ({
-          annotation_id: d.annotation_id,
-          class_name:    d.class_name,
-          confidence:    d.confidence,
-          bbox_xyxy:     d.bbox_xyxy as [number,number,number,number],
-          mask_area_pct: d.mask_area_pct,
-        })),
-        n_damages: result.damages.length,
-      };
-      setFrame(frame);
-      if (frame.n_damages > 0) addAlert(frame);
-      setSimMsg(`Simulated inspection complete — ${frame.n_damages} damage${frame.n_damages !== 1 ? 's' : ''} detected on Front camera`);
-    } catch (err) {
-      setSimMsg('Simulation failed — is the inference service running?');
-    } finally {
-      setSimLoading(false);
-    }
-  }, [simLoading, setFrame, addAlert]);
-
-  // Active camera damages map derived from store frames
-  const activeDamages = Object.fromEntries(
-    Object.entries(frames).map(([camId, frame]) => [camId, frame.n_damages])
+export default function DashboardPage() {
+  const { data, error, isLoading, mutate } = useSWR<DashboardSummary>(
+    urls.dashboard(),
+    fetcher,
+    { refreshInterval: 30_000 }
   );
 
   return (
-    <div className="flex h-[calc(100vh-56px)] flex-col">
-      <TopBar onSimulate={handleSimulate} />
-
-      <div className="flex-1 overflow-auto p-4 space-y-4">
-        {/* Guide banner when no frames yet */}
-        {!hasAnyFrame && (
-          <ConnectionGuide />
-        )}
-
-        {/* 360 Vehicle Blueprint Telemetry Map */}
-        <VehicleBlueprint activeDamages={activeDamages} />
-
-        {/* 3×2 camera grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {CAMERAS.map(({ id, angle }) => (
-            <LiveFeedCard key={id} cameraId={id} angle={angle} />
-          ))}
+    <div className="mx-auto max-w-[1400px] px-6 py-8">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-100">Fleet Overview</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Damage detection summary across your inspected fleet
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Link
+            href="/upload"
+            className="rounded-lg border border-emerald-700 bg-emerald-800/60 px-4 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-800"
+          >
+            + New Inspection
+          </Link>
+          <Link
+            href="/vehicles"
+            className="rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800"
+          >
+            View Fleet
+          </Link>
         </div>
       </div>
 
-      <AlertTicker />
+      {error && <InlineError message={error.message} onRetry={() => mutate()} />}
 
-      {simMsg && (
-        <SimToast msg={simMsg} onClose={() => setSimMsg(null)} />
+      {isLoading && (
+        <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
+          ))}
+        </div>
+      )}
+
+      {data && (
+        <>
+          <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
+            <StatTile label="Vehicles Inspected" value={data.total_vehicles} />
+            <StatTile label="Total Scans" value={data.total_scans} />
+            <StatTile label="Damages Detected" value={data.total_damages} accent="text-amber-400" />
+            <StatTile
+              label="Active Alerts"
+              value={data.active_alerts}
+              accent={data.active_alerts > 0 ? 'text-red-400' : 'text-gray-100'}
+            />
+          </div>
+
+          <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-gray-400">
+                Recent Activity
+              </h2>
+              <Link href="/alerts" className="text-xs text-emerald-400 hover:text-emerald-300">
+                View all alerts →
+              </Link>
+            </div>
+
+            {data.recent_scans.length === 0 ? (
+              <p className="py-8 text-center text-sm text-gray-600">
+                No scans yet — upload your first inspection to get started.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {data.recent_scans.map((item) => (
+                  <RecentActivityRow key={item.scan_id} item={item} />
+                ))}
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

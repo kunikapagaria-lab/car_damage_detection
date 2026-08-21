@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
 from api.routes.alerts import router as alerts_router
+from api.routes.dashboard import router as dashboard_router
 from api.routes.reports import router as reports_router
 from api.routes.scans import router as scans_router
 from api.routes.vehicles import router as vehicles_router
@@ -75,6 +76,7 @@ app.include_router(vehicles_router)
 app.include_router(scans_router)
 app.include_router(alerts_router)
 app.include_router(reports_router)
+app.include_router(dashboard_router)
 
 
 @app.exception_handler(RateLimitExceeded)

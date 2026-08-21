@@ -27,11 +27,22 @@ const CAMERA_ZONES: Array<{
 ];
 
 export function VehicleBlueprint({
-  activeDamages = { cam_01: 1, cam_03: 1 },
+  activeDamages = {},
   activeAngle = 'front',
   onSelectAngle,
 }: VehicleBlueprintProps) {
+  const hasActivity = Object.keys(activeDamages).length > 0;
+
   const healthStats = useMemo(() => {
+    if (!hasActivity) {
+      return {
+        totalDamages: 0,
+        healthScore: null as number | null,
+        statusLabel: 'Awaiting live feed…',
+        statusColor: 'text-gray-400 border-gray-700 bg-gray-800/40',
+      };
+    }
+
     const totalDamages = Object.values(activeDamages).reduce((a, b) => a + b, 0);
     const healthScore = Math.max(0, 100 - totalDamages * 15);
 
@@ -47,7 +58,7 @@ export function VehicleBlueprint({
     }
 
     return { totalDamages, healthScore, statusLabel, statusColor };
-  }, [activeDamages]);
+  }, [activeDamages, hasActivity]);
 
   return (
     <div className="rounded-xl border border-gray-800 bg-gray-900 p-4 shadow-xl">
@@ -61,7 +72,9 @@ export function VehicleBlueprint({
           </h4>
         </div>
         <div className={`rounded-md border px-2.5 py-1 text-xs font-bold ${healthStats.statusColor}`}>
-          HEALTH: {healthStats.healthScore}% • {healthStats.statusLabel}
+          {healthStats.healthScore !== null
+            ? `HEALTH: ${healthStats.healthScore}% • ${healthStats.statusLabel}`
+            : healthStats.statusLabel}
         </div>
       </div>
 
@@ -110,6 +123,7 @@ export function VehicleBlueprint({
 
             {/* Camera Sensor Nodes */}
             {CAMERA_ZONES.map((zone) => {
+              const hasReported = zone.id in activeDamages;
               const damageCount = activeDamages[zone.id] || 0;
               const isDamaged = damageCount > 0;
               const isSelected = activeAngle === zone.angle;
@@ -121,8 +135,8 @@ export function VehicleBlueprint({
                     cx={zone.cx}
                     cy={zone.cy}
                     r={isSelected ? '22' : '16'}
-                    fill={isDamaged ? 'rgba(239, 68, 68, 0.25)' : 'rgba(52, 211, 153, 0.15)'}
-                    stroke={isDamaged ? '#ef4444' : isSelected ? '#38bdf8' : '#34d399'}
+                    fill={isDamaged ? 'rgba(239, 68, 68, 0.25)' : hasReported ? 'rgba(52, 211, 153, 0.15)' : 'rgba(100, 116, 139, 0.12)'}
+                    stroke={isDamaged ? '#ef4444' : isSelected ? '#38bdf8' : hasReported ? '#34d399' : '#475569'}
                     strokeWidth={isSelected ? '3' : '2'}
                     className={isDamaged ? 'animate-ping opacity-75' : ''}
                   />
@@ -131,7 +145,7 @@ export function VehicleBlueprint({
                     cx={zone.cx}
                     cy={zone.cy}
                     r="12"
-                    fill={isDamaged ? '#ef4444' : isSelected ? '#0284c7' : '#059669'}
+                    fill={isDamaged ? '#ef4444' : isSelected ? '#0284c7' : hasReported ? '#059669' : '#334155'}
                   />
 
                   {/* Sensor Number / Icon */}
@@ -143,7 +157,7 @@ export function VehicleBlueprint({
                     fontSize="10"
                     fontWeight="bold"
                   >
-                    {isDamaged ? `!${damageCount}` : '✓'}
+                    {isDamaged ? `!${damageCount}` : hasReported ? '✓' : '·'}
                   </text>
                 </g>
               );
@@ -155,6 +169,7 @@ export function VehicleBlueprint({
         <div className="space-y-2">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Sensor Zones Telemetry</p>
           {CAMERA_ZONES.map((zone) => {
+            const hasReported = zone.id in activeDamages;
             const damageCount = activeDamages[zone.id] || 0;
             const isDamaged = damageCount > 0;
             const isSelected = activeAngle === zone.angle;
@@ -172,11 +187,11 @@ export function VehicleBlueprint({
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full ${isDamaged ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
+                  <span className={`h-2 w-2 rounded-full ${isDamaged ? 'bg-red-500 animate-pulse' : hasReported ? 'bg-emerald-500' : 'bg-gray-600'}`} />
                   <span className="truncate">{zone.name}</span>
                 </div>
                 <span className="font-mono font-bold text-[10px]">
-                  {isDamaged ? `${damageCount} DEFECTS` : 'OK'}
+                  {isDamaged ? `${damageCount} DEFECTS` : hasReported ? 'OK' : 'NO SIGNAL'}
                 </span>
               </button>
             );

@@ -121,6 +121,25 @@ class ScanDetailOut(ScanOut):
     damage_records: list[DamageRecordOut] = []
 
 
+# ── Dashboard summary ─────────────────────────────────────────────────────────
+
+class RecentScanSummary(BaseModel):
+    scan_id: uuid.UUID
+    vehicle_id: uuid.UUID
+    plate_number: str
+    triggered_at: datetime
+    new_damage_count: int
+    thumbnail_path: str | None
+
+
+class DashboardSummaryOut(BaseModel):
+    total_vehicles: int
+    total_scans: int
+    total_damages: int
+    active_alerts: int
+    recent_scans: list[RecentScanSummary]
+
+
 class DamageDiffOut(OrmBase):
     id: uuid.UUID
     vehicle_id: uuid.UUID

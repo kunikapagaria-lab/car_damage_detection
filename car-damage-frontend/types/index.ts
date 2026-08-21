@@ -93,6 +93,23 @@ export interface DamageDiff {
   computed_at: string;
 }
 
+export interface RecentScanSummary {
+  scan_id: string;
+  vehicle_id: string;
+  plate_number: string;
+  triggered_at: string;
+  new_damage_count: number;
+  thumbnail_path: string | null;
+}
+
+export interface DashboardSummary {
+  total_vehicles: number;
+  total_scans: number;
+  total_damages: number;
+  active_alerts: number;
+  recent_scans: RecentScanSummary[];
+}
+
 export interface AlertLog {
   id: string;
   scan_id: string;

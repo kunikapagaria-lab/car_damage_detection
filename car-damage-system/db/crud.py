@@ -556,3 +556,48 @@ async def ingest_scan(
         new_damages=diff_summary.get("total_new", 0),
     )
     return scan, diff_summary
+
+
+# ── Dashboard summary ───────────────────────────────────────────────────────
+
+async def get_dashboard_summary(db: AsyncSession, recent_limit: int = 6) -> dict[str, Any]:
+    total_vehicles = await db.scalar(select(func.count()).select_from(Vehicle))
+    total_scans = await db.scalar(select(func.count()).select_from(Scan))
+    total_damages = await db.scalar(select(func.count()).select_from(DamageRecord))
+    active_alerts = await db.scalar(select(func.count()).select_from(AlertLog))
+
+    recent_scans_result = await db.execute(
+        select(Scan.id, Scan.vehicle_id, Scan.triggered_at, Vehicle.plate_number)
+        .join(Vehicle, Vehicle.id == Scan.vehicle_id)
+        .order_by(Scan.triggered_at.desc())
+        .limit(recent_limit)
+    )
+    recent_scans = []
+    for scan_id, vehicle_id, triggered_at, plate_number in recent_scans_result.all():
+        new_damage_count = await db.scalar(
+            select(func.count())
+            .select_from(DamageRecord)
+            .where(DamageRecord.scan_id == scan_id, DamageRecord.is_new_damage.is_(True))
+        )
+        thumbnail = await db.scalar(
+            select(ScanImage.thumbnail_path)
+            .where(ScanImage.scan_id == scan_id)
+            .order_by(ScanImage.captured_at)
+            .limit(1)
+        )
+        recent_scans.append({
+            "scan_id": str(scan_id),
+            "vehicle_id": str(vehicle_id),
+            "plate_number": plate_number,
+            "triggered_at": triggered_at.isoformat(),
+            "new_damage_count": new_damage_count or 0,
+            "thumbnail_path": thumbnail,
+        })
+
+    return {
+        "total_vehicles": total_vehicles or 0,
+        "total_scans": total_scans or 0,
+        "total_damages": total_damages or 0,
+        "active_alerts": active_alerts or 0,
+        "recent_scans": recent_scans,
+    }

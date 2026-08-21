@@ -6,26 +6,12 @@ import { clsx } from 'clsx';
 import { useStore } from '@/lib/store';
 
 const NAV = [
-  { href: '/',         label: 'Live'     },
-  { href: '/upload',   label: 'Upload'   },
-  { href: '/vehicles', label: 'Vehicles' },
-  { href: '/alerts',   label: 'Alerts'   },
+  { href: '/',         label: 'Dashboard' },
+  { href: '/live',     label: 'Live'      },
+  { href: '/upload',   label: 'Upload'    },
+  { href: '/vehicles', label: 'Vehicles'  },
+  { href: '/alerts',   label: 'Alerts'    },
 ];
-
-function WsDot() {
-  const status = useStore((s) => s.wsStatus);
-  return (
-    <span
-      title={`WebSocket: ${status}`}
-      className={clsx(
-        'inline-block h-2 w-2 rounded-full transition-colors',
-        status === 'connected'    && 'bg-emerald-400 shadow-[0_0_6px_#34d399]',
-        status === 'connecting'   && 'bg-yellow-400 animate-pulse',
-        status === 'disconnected' && 'bg-red-500',
-      )}
-    />
-  );
-}
 
 function AlertsBadge() {
   const count = useStore((s) => s.newDamageCount);
@@ -67,11 +53,6 @@ export function Navbar() {
             </Link>
           ))}
         </nav>
-
-        <div className="ml-auto flex items-center gap-3 text-xs text-gray-500">
-          <WsDot />
-          <span>Live Feed</span>
-        </div>
       </div>
     </header>
   );

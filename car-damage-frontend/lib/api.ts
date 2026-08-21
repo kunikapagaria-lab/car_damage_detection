@@ -88,6 +88,7 @@ export const urls = {
   scanDiff:        (id: string) => `${API_BASE}/scans/${id}/diff`,
   scanReport:      (id: string) => `${API_BASE}/scans/${id}/report`,
   alerts:          (limit = 50) => `${API_BASE}/alerts/recent?limit=${limit}`,
+  dashboard:       () => `${API_BASE}/dashboard/summary`,
   // Inference
   inspectFrame:    () => `${INFERENCE_BASE}/api/v1/inspect/frame`,
   inspectBatch:    () => `${INFERENCE_BASE}/api/v1/inspect/batch`,

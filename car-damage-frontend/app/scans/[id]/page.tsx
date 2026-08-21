@@ -16,6 +16,7 @@ import {
 import { fetcher, urls, minioUrl, BUCKET } from '@/lib/api';
 import { DamageCanvas } from '@/components/DamageCanvas';
 import { DamageBadge, ScanStatusBadge, DAMAGE_HEX } from '@/components/DamageBadge';
+import { RepairCostCard } from '@/components/RepairCostCard';
 import { ScanDetailSkeleton } from '@/components/Skeleton';
 import { InlineError, ErrorBoundary } from '@/components/ErrorBoundary';
 import { recordToAnnotation } from '@/types';
@@ -373,6 +374,20 @@ export default function ScanDetailPage({ params }: PageProps) {
           <ErrorBoundary>
             <DamageTable scan={scan} />
           </ErrorBoundary>
+
+          {/* Repair cost estimate */}
+          <div className="mt-6">
+            <ErrorBoundary>
+              <RepairCostCard
+                damages={scan.damage_records.map((r) => ({
+                  class_name: r.damage_class,
+                  confidence: r.confidence,
+                  mask_area_pct: r.mask_area_pct,
+                  mask_area_px: r.mask_area_px,
+                }))}
+              />
+            </ErrorBoundary>
+          </div>
         </>
       )}
 
