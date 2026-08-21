@@ -22,6 +22,7 @@ import structlog
 from PIL import Image
 
 from inference.base_predictor import BasePredictor, DamageResult, PredictorConfig
+from inference.reference_annotations import match_reference
 
 logger = structlog.get_logger(__name__)
 
@@ -99,46 +100,69 @@ class DummyPredictor(BasePredictor):
     def predict(self, image: np.ndarray) -> list[DamageResult]:
         t0 = time.monotonic()
 
-        img_hash = hashlib.md5(image.tobytes()).hexdigest()
-        seed = int(img_hash[:8], 16)
-        rng = random.Random(seed)
-
-        n_detections = rng.choices(range(5), weights=COUNT_WEIGHTS, k=1)[0]
-
         h, w = image.shape[:2]
         results: list[DamageResult] = []
 
-        for _ in range(n_detections):
-            class_name = rng.choices(DAMAGE_CLASSES, weights=CLASS_WEIGHTS, k=1)[0]
-            confidence = round(rng.uniform(
-                max(self.config.score_threshold, 0.45), 0.97
-            ), 4)
+        reference = match_reference(image)
+        if reference is not None:
+            # Recognized one of the known demo photos — use the curated,
+            # visually-verified annotations instead of random ones.
+            rng = random.Random(f"reference-{w}x{h}")
+            for ann in reference:
+                fx1, fy1, fx2, fy2 = ann["bbox_frac"]
+                x1, y1, x2, y2 = int(fx1 * w), int(fy1 * h), int(fx2 * w), int(fy2 * h)
+                polygon = _bbox_to_polygon(x1, y1, x2, y2, rng)
+                area_px = int(_shoelace_area(polygon))
+                area_pct = round(area_px / (h * w) * 100, 4)
+                crop = _crop_b64(image, x1, y1, x2, y2, self.config.crop_padding_px)
+                results.append(DamageResult(
+                    annotation_id=DamageResult.new_id(),
+                    class_name=ann["class_name"],
+                    confidence=ann["confidence"],
+                    bbox_xyxy=[x1, y1, x2, y2],
+                    polygon_points=polygon,
+                    mask_area_px=area_px,
+                    mask_area_pct=area_pct,
+                    crop_b64=crop,
+                ))
+        else:
+            img_hash = hashlib.md5(image.tobytes()).hexdigest()
+            seed = int(img_hash[:8], 16)
+            rng = random.Random(seed)
 
-            max_bw = max(40, int(w * 0.30))
-            max_bh = max(40, int(h * 0.30))
-            bw = rng.randint(40, max_bw)
-            bh = rng.randint(40, max_bh)
-            x1 = rng.randint(0, max(0, w - bw - 1))
-            y1 = rng.randint(0, max(0, h - bh - 1))
-            x2 = x1 + bw
-            y2 = y1 + bh
+            n_detections = rng.choices(range(5), weights=COUNT_WEIGHTS, k=1)[0]
 
-            polygon = _bbox_to_polygon(x1, y1, x2, y2, rng)
-            area_px = int(_shoelace_area(polygon))
-            area_pct = round(area_px / (h * w) * 100, 4)
+            for _ in range(n_detections):
+                class_name = rng.choices(DAMAGE_CLASSES, weights=CLASS_WEIGHTS, k=1)[0]
+                confidence = round(rng.uniform(
+                    max(self.config.score_threshold, 0.45), 0.97
+                ), 4)
 
-            crop = _crop_b64(image, x1, y1, x2, y2, self.config.crop_padding_px)
+                max_bw = max(40, int(w * 0.30))
+                max_bh = max(40, int(h * 0.30))
+                bw = rng.randint(40, max_bw)
+                bh = rng.randint(40, max_bh)
+                x1 = rng.randint(0, max(0, w - bw - 1))
+                y1 = rng.randint(0, max(0, h - bh - 1))
+                x2 = x1 + bw
+                y2 = y1 + bh
 
-            results.append(DamageResult(
-                annotation_id=DamageResult.new_id(),
-                class_name=class_name,
-                confidence=confidence,
-                bbox_xyxy=[x1, y1, x2, y2],
-                polygon_points=polygon,
-                mask_area_px=area_px,
-                mask_area_pct=area_pct,
-                crop_b64=crop,
-            ))
+                polygon = _bbox_to_polygon(x1, y1, x2, y2, rng)
+                area_px = int(_shoelace_area(polygon))
+                area_pct = round(area_px / (h * w) * 100, 4)
+
+                crop = _crop_b64(image, x1, y1, x2, y2, self.config.crop_padding_px)
+
+                results.append(DamageResult(
+                    annotation_id=DamageResult.new_id(),
+                    class_name=class_name,
+                    confidence=confidence,
+                    bbox_xyxy=[x1, y1, x2, y2],
+                    polygon_points=polygon,
+                    mask_area_px=area_px,
+                    mask_area_pct=area_pct,
+                    crop_b64=crop,
+                ))
 
         time.sleep(_LATENCY_MS / 1000.0)
         latency = (time.monotonic() - t0) * 1000.0
@@ -152,6 +176,7 @@ class DummyPredictor(BasePredictor):
             image_shape=image.shape,
             n_detections=len(results),
             latency_ms=round(latency, 2),
+            reference_matched=reference is not None,
         )
         return results
 
