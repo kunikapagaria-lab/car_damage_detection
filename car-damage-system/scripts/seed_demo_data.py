@@ -44,23 +44,64 @@ VEHICLES = [
 ]
 
 
-def make_plate_image(plate: str, color: tuple[int, int, int], variant: int) -> bytes:
-    """Render a simple placeholder 'vehicle photo' — the dummy predictor only
-    hashes pixel bytes for its random seed, so content just needs to vary."""
-    img = Image.new("RGB", (960, 640), color=color)
+def _lerp(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
+    return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))  # type: ignore[return-value]
+
+
+def _vertical_gradient(w: int, h: int, top: tuple[int, int, int], bottom: tuple[int, int, int]) -> Image.Image:
+    img = Image.new("RGB", (w, h))
     draw = ImageDraw.Draw(img)
+    for y in range(h):
+        draw.line([(0, y), (w, y)], fill=_lerp(top, bottom, y / h))
+    return img
+
+
+def make_plate_image(plate: str, body_color: tuple[int, int, int], variant: int) -> bytes:
+    """Render a stylized car-silhouette 'vehicle photo' — same look as the
+    app's own SamplePresets.tsx demo gallery, ported to PIL so seeded scans
+    show an actual car rather than an abstract placeholder. The dummy
+    predictor just hashes pixel bytes for its random seed, so content only
+    needs to vary enough between scans to produce different detections."""
+    w, h = 640, 400
+    img = _vertical_gradient(w, h, (30, 41, 59), (2, 6, 23))
+    draw = ImageDraw.Draw(img, "RGBA")
     rng = random.Random(f"{plate}-{variant}")
-    for _ in range(40):
-        x, y = rng.randint(0, 960), rng.randint(0, 640)
-        r = rng.randint(5, 30)
-        shade = tuple(max(0, min(255, c + rng.randint(-25, 25))) for c in color)
-        draw.ellipse([x - r, y - r, x + r, y + r], fill=shade)
+
+    # Slight per-vehicle/per-scan color jitter so repeated scans still hash
+    # to different bytes (needed for the dummy predictor's varied output).
+    jitter = lambda c: max(20, min(235, c + rng.randint(-12, 12)))  # noqa: E731
+    shade = tuple(jitter(c) for c in body_color)
+    dark = tuple(max(15, c - 60) for c in shade)
+
+    # Car body silhouette (front-3/4 view), matching SamplePresets.tsx
+    body = [
+        (100, 260), (120, 200), (240, 150), (360, 140), (460, 180),
+        (540, 220), (530, 280), (450, 280), (210, 280), (130, 280),
+    ]
+    draw.polygon(body, fill=shade, outline=(148, 163, 184))
+
+    # Windows
+    windows = [(245, 155), (355, 145), (445, 185), (350, 190), (250, 190)]
+    draw.polygon(windows, fill=(148, 163, 184, 90), outline=(203, 213, 225))
+
+    # Wheels
+    for cx in (170, 490):
+        cy = 280
+        draw.ellipse([cx - 38, cy - 38, cx + 38, cy + 38], fill=(15, 23, 42), outline=(100, 116, 139), width=4)
+        draw.ellipse([cx - 22, cy - 22, cx + 22, cy + 22], fill=(148, 163, 184))
+
+    # Headlight
+    draw.rectangle([102, 210, 122, 225], fill=(254, 240, 138))
+
+    # Body shading line
+    draw.line([body[1], body[8]], fill=dark + (140,), width=2)
+
     try:
-        font = ImageFont.truetype("arial.ttf", 48)
+        font = ImageFont.truetype("arial.ttf", 28)
     except OSError:
         font = ImageFont.load_default()
-    draw.rectangle([260, 560, 700, 620], fill=(255, 255, 255))
-    draw.text((280, 565), plate, fill=(0, 0, 0), font=font)
+    draw.rectangle([20, h - 44, 220, h - 12], fill=(255, 255, 255))
+    draw.text((30, h - 40), plate, fill=(15, 23, 42), font=font)
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=85)
     return buf.getvalue()
